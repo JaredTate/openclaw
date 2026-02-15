@@ -643,7 +643,7 @@ describe("QmdMemoryManager", () => {
     await manager.close();
   });
 
-  it("scopes qmd queries to managed collections", async () => {
+  it("scopes qmd queries to managed collections individually", async () => {
     cfg = {
       ...cfg,
       memory: {
@@ -671,21 +671,18 @@ describe("QmdMemoryManager", () => {
     const { manager, resolved } = await createManager();
 
     await manager.search("test", { sessionKey: "agent:main:slack:dm:u123" });
-    const searchCall = spawnMock.mock.calls.find((call) => call[1]?.[0] === "search");
+    const searchCalls = spawnMock.mock.calls
+      .map((call) => call[1] as string[])
+      .filter((args) => args[0] === "search");
     const maxResults = resolved.qmd?.limits.maxResults;
     if (!maxResults) {
       throw new Error("qmd maxResults missing");
     }
-    expect(searchCall?.[1]).toEqual([
-      "search",
-      "test",
-      "--json",
-      "-n",
-      String(maxResults),
-      "-c",
-      "workspace",
-      "-c",
-      "notes",
+    // With multiple collections, each collection is queried individually to
+    // work around QMD silently returning no results with multiple -c flags.
+    expect(searchCalls).toEqual([
+      ["search", "test", "--json", "-n", String(maxResults), "-c", "workspace"],
+      ["search", "test", "--json", "-n", String(maxResults), "-c", "notes"],
     ]);
     await manager.close();
   });
@@ -780,8 +777,11 @@ describe("QmdMemoryManager", () => {
     const searchAndQueryCalls = spawnMock.mock.calls
       .map((call) => call[1] as string[])
       .filter((args) => args[0] === "search" || args[0] === "query");
+    // With the per-collection workaround, search is called individually per
+    // collection.  The first one fails with "unknown flag", triggering the
+    // query fallback which also runs per-collection.
     expect(searchAndQueryCalls).toEqual([
-      ["search", "test", "--json", "-n", String(maxResults), "-c", "workspace", "-c", "notes"],
+      ["search", "test", "--json", "-n", String(maxResults), "-c", "workspace"],
       ["query", "test", "--json", "-n", String(maxResults), "-c", "workspace"],
       ["query", "test", "--json", "-n", String(maxResults), "-c", "notes"],
     ]);
