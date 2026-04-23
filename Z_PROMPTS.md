@@ -19,7 +19,6 @@ Do this carefully:
    - `openclaw gateway probe`
    - `openclaw channels status --probe`
    - `openclaw status`
-   - `openclaw doctor`
 9. Troubleshoot and fix real startup/config/model/plugin errors.
 10. Report the final installed version, commit, gateway status, health check results, config changes, and any remaining warnings.
 
