@@ -98,6 +98,21 @@ function isProcessAborted(abortSignal?: AbortSignal): boolean {
   return Boolean(abortSignal?.aborted);
 }
 
+function formatDiscordReplyDeliveryFailure(params: {
+  kind: string;
+  err: unknown;
+  target: string;
+  sessionKey?: string;
+}) {
+  const context = [
+    `target=${params.target}`,
+    params.sessionKey ? `session=${params.sessionKey}` : undefined,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return `discord ${params.kind} reply failed (${context}): ${String(params.err)}`;
+}
+
 type DiscordMessageProcessObserver = {
   onFinalReplyStart?: () => void;
   onFinalReplyDelivered?: () => void;
@@ -133,6 +148,7 @@ export async function processDiscordMessage(
     isGroupDm,
     baseText,
     messageText,
+    preflightAudioTranscript,
     shouldRequireMention,
     canDetectMention,
     effectiveWasMentioned,
@@ -413,6 +429,10 @@ export async function processDiscordMessage(
     }
   }
   const mediaPayload = buildDiscordMediaPayload(mediaList);
+  const preflightAudioIndex =
+    preflightAudioTranscript === undefined
+      ? -1
+      : mediaList.findIndex((media) => media.contentType?.startsWith("audio/"));
   const threadKeys = resolveThreadSessionKeys({
     baseSessionKey,
     threadId: threadChannel ? messageChannelId : undefined,
@@ -472,10 +492,11 @@ export async function processDiscordMessage(
 
   const ctxPayload = finalizeInboundContext({
     Body: combinedBody,
-    BodyForAgent: baseText ?? text,
+    BodyForAgent: preflightAudioTranscript ?? baseText ?? text,
     InboundHistory: inboundHistory,
-    RawBody: baseText,
-    CommandBody: baseText,
+    RawBody: preflightAudioTranscript ?? baseText,
+    CommandBody: preflightAudioTranscript ?? baseText,
+    ...(preflightAudioTranscript !== undefined ? { Transcript: preflightAudioTranscript } : {}),
     From: effectiveFrom,
     To: effectiveTo,
     SessionKey: boundSessionKey ?? autoThreadContext?.SessionKey ?? threadKeys.sessionKey,
@@ -506,6 +527,7 @@ export async function processDiscordMessage(
     ThreadLabel: threadLabel,
     Timestamp: resolveTimestampMs(message.timestamp),
     ...mediaPayload,
+    ...(preflightAudioIndex >= 0 ? { MediaTranscribedIndexes: [preflightAudioIndex] } : {}),
     CommandAuthorized: commandAuthorized,
     CommandSource: "text" as const,
     // Originating channel for reply routing.
@@ -811,6 +833,8 @@ export async function processDiscordMessage(
               }
               notifyFinalReplyStart();
               await editMessageDiscord(deliverChannelId, previewMessageId, edit, {
+                cfg,
+                accountId,
                 rest: deliveryRest,
               });
             },
@@ -889,7 +913,16 @@ export async function processDiscordMessage(
         }
       },
       onError: (err, info) => {
-        runtime.error?.(danger(`discord ${info.kind} reply failed: ${String(err)}`));
+        runtime.error?.(
+          danger(
+            formatDiscordReplyDeliveryFailure({
+              kind: info.kind,
+              err,
+              target: deliverTarget,
+              sessionKey: ctxPayload.SessionKey,
+            }),
+          ),
+        );
       },
       onReplyStart: async () => {
         if (isProcessAborted(abortSignal)) {
