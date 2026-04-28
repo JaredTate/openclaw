@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { bundledPluginRoot } from "openclaw/plugin-sdk/test-fixtures";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildOfficialChannelCatalog,
@@ -7,7 +8,6 @@ import {
   writeOfficialChannelCatalog,
 } from "../scripts/write-official-channel-catalog.mjs";
 import { describePluginInstallSource } from "../src/plugins/install-source-info.js";
-import { bundledPluginRoot } from "./helpers/bundled-plugin-paths.js";
 import { cleanupTempDirs, makeTempRepoRoot, writeJsonFile } from "./helpers/temp-repo.js";
 
 const tempDirs: string[] = [];
@@ -94,8 +94,10 @@ describe("buildOfficialChannelCatalog", () => {
               label: "Yuanbao",
             }),
             install: {
-              npmSpec: "openclaw-plugin-yuanbao",
+              npmSpec: "openclaw-plugin-yuanbao@2.11.0",
               defaultChoice: "npm",
+              expectedIntegrity:
+                "sha512-lYmBrU71ox3v7dzRqaltvzTXPcMjjgYrNqpBj5HIBkXgEFkXRRG8wplXg9Fub41/FjsSPn3WAbYpdTc+k+jsHg==",
             },
           }),
         }),
