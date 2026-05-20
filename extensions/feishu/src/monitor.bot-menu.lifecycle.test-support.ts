@@ -32,7 +32,7 @@ const {
   withReplyDispatcherMock,
 } = getFeishuLifecycleTestMocks();
 
-let _handlers: Record<string, (data: unknown) => Promise<void>> = {};
+let handlers: Record<string, (data: unknown) => Promise<void>> = {};
 let lastRuntime = createRuntimeEnv();
 const originalStateDir = process.env.OPENCLAW_STATE_DIR;
 const lifecycleConfig = createFeishuLifecycleConfig({
@@ -41,9 +41,11 @@ const lifecycleConfig = createFeishuLifecycleConfig({
   appSecret: "secret_test",
   channelConfig: {
     dmPolicy: "open",
+    allowFrom: ["ou_user1"],
   },
   accountConfig: {
     dmPolicy: "open",
+    allowFrom: ["ou_user1"],
   },
 });
 
@@ -53,6 +55,7 @@ const lifecycleAccount = createResolvedFeishuLifecycleAccount({
   appSecret: "secret_test",
   config: {
     dmPolicy: "open",
+    allowFrom: ["ou_user1"],
   },
 });
 
@@ -75,7 +78,7 @@ async function setupLifecycleMonitor() {
   return setupFeishuLifecycleHandler({
     createEventDispatcherMock,
     onRegister: (registered) => {
-      _handlers = registered;
+      handlers = registered;
     },
     runtime: lastRuntime,
     cfg: lifecycleConfig,
@@ -89,7 +92,7 @@ describe("Feishu bot-menu lifecycle", () => {
   beforeEach(() => {
     vi.useRealTimers();
     resetFeishuLifecycleTestMocks();
-    _handlers = {};
+    handlers = {};
     lastRuntime = createRuntimeEnv();
     setFeishuLifecycleStateDir("openclaw-feishu-bot-menu");
 
