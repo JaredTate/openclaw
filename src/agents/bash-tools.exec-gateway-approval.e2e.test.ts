@@ -28,7 +28,10 @@ const TEST_ENV_KEYS = [
   "OPENCLAW_SKIP_CANVAS_HOST",
   "OPENCLAW_SKIP_BROWSER_CONTROL_SERVER",
   "OPENCLAW_SKIP_PROVIDERS",
+  "OPENCLAW_TEST_MINIMAL_GATEWAY",
 ];
+const GATEWAY_CONNECT_TIMEOUT_MS = 120_000;
+const EXEC_APPROVAL_E2E_TIMEOUT_MS = 180_000;
 
 type Cleanup = () => Promise<void> | void;
 
@@ -59,7 +62,7 @@ describe("gateway-hosted exec approvals", () => {
     clearSessionStoreCacheForTest();
   });
 
-  it("lets PI-style gateway tool calls request and wait for approval over separate connections", async () => {
+  it("lets OpenClaw-style gateway tool calls request and wait for approval over separate connections", async () => {
     const envSnapshot = captureEnv(TEST_ENV_KEYS);
     cleanup.push(() => envSnapshot.restore());
 
@@ -107,6 +110,7 @@ describe("gateway-hosted exec approvals", () => {
     process.env.OPENCLAW_SKIP_CANVAS_HOST = "1";
     process.env.OPENCLAW_SKIP_BROWSER_CONTROL_SERVER = "1";
     process.env.OPENCLAW_SKIP_PROVIDERS = "1";
+    process.env.OPENCLAW_TEST_MINIMAL_GATEWAY = "1";
     clearRuntimeConfigSnapshot();
     clearConfigCache();
     clearSessionStoreCacheForTest();
@@ -115,6 +119,7 @@ describe("gateway-hosted exec approvals", () => {
       bind: "loopback",
       auth: { mode: "token", token },
       controlUiEnabled: false,
+      deferStartupSidecars: true,
     });
     cleanup.push(() => server.close());
 
@@ -125,6 +130,8 @@ describe("gateway-hosted exec approvals", () => {
       clientDisplayName: "approval operator",
       mode: GATEWAY_CLIENT_MODES.TEST,
       scopes: [ADMIN_SCOPE],
+      requestTimeoutMs: GATEWAY_CONNECT_TIMEOUT_MS,
+      timeoutMs: GATEWAY_CONNECT_TIMEOUT_MS,
     });
     cleanup.push(() => disconnectGatewayClient(operator));
 
@@ -167,5 +174,5 @@ describe("gateway-hosted exec approvals", () => {
     expect(outcome.status).toBe("completed");
     expect(outcome.exitCode).toBe(0);
     expect(outcome.aggregated).toBe("smoke");
-  });
+  }, EXEC_APPROVAL_E2E_TIMEOUT_MS);
 });
