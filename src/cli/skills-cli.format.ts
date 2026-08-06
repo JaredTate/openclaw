@@ -1,3 +1,4 @@
+// Formatting layer for `openclaw skills` commands; keeps discovery data separate from terminal UI.
 import { sanitizeForLog, stripAnsi } from "../../packages/terminal-core/src/ansi.js";
 import {
   decorativeEmoji,
@@ -13,16 +14,19 @@ import {
 import { shortenHomePath } from "../utils.js";
 import { formatCliCommand } from "./command-format.js";
 
+/** Options for rendering the skill list command. */
 export type SkillsListOptions = {
   json?: boolean;
   eligible?: boolean;
   verbose?: boolean;
 };
 
+/** Options for rendering one skill detail view. */
 export type SkillInfoOptions = {
   json?: boolean;
 };
 
+/** Options for rendering skill readiness checks. */
 export type SkillsCheckOptions = {
   json?: boolean;
   agent?: string;
@@ -32,7 +36,8 @@ function appendClawHubHint(output: string, json?: boolean): string {
   if (json) {
     return output;
   }
-  return `${output}\n\nTip: use \`openclaw skills search\`, \`openclaw skills install\`, and \`openclaw skills update\` for ClawHub-backed skills.`;
+  const command = formatCliCommand("openclaw skills");
+  return `${output}\n\nTip: use \`${command} search\`, \`${command} install\`, and \`${command} update\` for ClawHub-backed skills.`;
 }
 
 function formatSkillStatus(skill: SkillStatusEntry): string {
@@ -110,6 +115,7 @@ function formatSkillMissingSummary(skill: SkillStatusEntry): string {
   return missing.join("; ");
 }
 
+/** Render skill discovery status as sanitized JSON or a terminal table. */
 export function formatSkillsList(report: SkillStatusReport, opts: SkillsListOptions): string {
   const isReadyForAgent = (skill: SkillStatusEntry) =>
     skill.eligible && !skill.blockedByAgentFilter;
@@ -185,6 +191,7 @@ export function formatSkillsList(report: SkillStatusReport, opts: SkillsListOpti
   return appendClawHubHint(lines.join("\n"), opts.json);
 }
 
+/** Render one skill's status, requirements, install hints, and API-key setup details. */
 export function formatSkillInfo(
   report: SkillStatusReport,
   skillName: string,
@@ -328,6 +335,7 @@ export function formatSkillInfo(
   return appendClawHubHint(lines.join("\n"), opts.json);
 }
 
+/** Render aggregate setup health for all discovered skills. */
 export function formatSkillsCheck(report: SkillStatusReport, opts: SkillsCheckOptions): string {
   const eligible = report.skills.filter((s) => s.eligible);
   const modelVisible = report.skills.filter((s) => s.modelVisible);
@@ -425,7 +433,7 @@ export function formatSkillsCheck(report: SkillStatusReport, opts: SkillsCheckOp
     }
     if (commandVisible.length > 0) {
       lines.push(
-        `  ${theme.muted("Available as command:")} people, scripts, or cron jobs can call the skill explicitly.`,
+        `  ${theme.muted("Available as command:")} people, scripts, or automations can call the skill explicitly.`,
       );
     }
     if (promptHidden.length > 0) {

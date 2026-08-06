@@ -1,28 +1,27 @@
-const SESSION_WRITE_LOCK_TIMEOUT_CODE = "OPENCLAW_SESSION_WRITE_LOCK_TIMEOUT";
-const SESSION_WRITE_LOCK_STALE_CODE = "OPENCLAW_SESSION_WRITE_LOCK_STALE";
+/** Stable session ownership errors shared by runtime and public harness adapters. */
+const TIMEOUT_CODE = "OPENCLAW_SESSION_WRITE_LOCK_TIMEOUT";
+const STALE_CODE = "OPENCLAW_SESSION_WRITE_LOCK_STALE";
 
 export class SessionWriteLockTimeoutError extends Error {
-  readonly code = SESSION_WRITE_LOCK_TIMEOUT_CODE;
-  readonly timeoutMs: number;
-  readonly owner: string;
-  readonly lockPath: string;
+  readonly code = TIMEOUT_CODE;
+  declare readonly timeoutMs: number;
+  declare readonly owner: string;
+  declare readonly lockPath: string;
 
   constructor(params: { timeoutMs: number; owner: string; lockPath: string }) {
     super(
       `session file locked (timeout ${params.timeoutMs}ms): ${params.owner} ${params.lockPath}`,
     );
     this.name = "SessionWriteLockTimeoutError";
-    this.timeoutMs = params.timeoutMs;
-    this.owner = params.owner;
-    this.lockPath = params.lockPath;
+    Object.assign(this, params);
   }
 }
 
 export class SessionWriteLockStaleError extends Error {
-  readonly code = SESSION_WRITE_LOCK_STALE_CODE;
-  readonly owner: string;
-  readonly lockPath: string;
-  readonly staleReasons: string[];
+  readonly code = STALE_CODE;
+  declare readonly owner: string;
+  declare readonly lockPath: string;
+  declare readonly staleReasons: string[];
 
   constructor(params: { owner: string; lockPath: string; staleReasons?: string[] }) {
     const staleReasons = params.staleReasons?.length ? params.staleReasons : ["unknown"];
@@ -30,34 +29,27 @@ export class SessionWriteLockStaleError extends Error {
       `session file lock stale (${staleReasons.join(", ")}): ${params.owner} ${params.lockPath}`,
     );
     this.name = "SessionWriteLockStaleError";
-    this.owner = params.owner;
-    this.lockPath = params.lockPath;
-    this.staleReasons = staleReasons;
+    Object.assign(this, params, { staleReasons });
   }
 }
 
-export function isSessionWriteLockTimeoutError(err: unknown): boolean {
+/** Returns whether another owner replaced the active SQLite session lease. */
+export function isSessionWriteLockLeaseLostError(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  const staleReasons = (error as { staleReasons?: unknown } | null)?.staleReasons;
   return (
-    err instanceof SessionWriteLockTimeoutError ||
-    Boolean(
-      err &&
-      typeof err === "object" &&
-      (err as { code?: unknown }).code === SESSION_WRITE_LOCK_TIMEOUT_CODE,
-    )
+    (error instanceof SessionWriteLockStaleError || code === STALE_CODE) &&
+    Array.isArray(staleReasons) &&
+    staleReasons.includes("lease-lost")
   );
 }
 
-export function isSessionWriteLockStaleError(err: unknown): boolean {
+export function isSessionWriteLockAcquireError(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
   return (
-    err instanceof SessionWriteLockStaleError ||
-    Boolean(
-      err &&
-      typeof err === "object" &&
-      (err as { code?: unknown }).code === SESSION_WRITE_LOCK_STALE_CODE,
-    )
+    error instanceof SessionWriteLockTimeoutError ||
+    error instanceof SessionWriteLockStaleError ||
+    code === TIMEOUT_CODE ||
+    code === STALE_CODE
   );
-}
-
-export function isSessionWriteLockAcquireError(err: unknown): boolean {
-  return isSessionWriteLockTimeoutError(err) || isSessionWriteLockStaleError(err);
 }

@@ -1,3 +1,5 @@
+// Session target resolution chooses the effective channel, destination,
+// account, and thread from explicit input, turn source, or session history.
 import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalString,
@@ -36,6 +38,7 @@ export type SessionDeliveryTarget = {
 
 function resolveParsedRouteTarget(params: {
   channel: string;
+  accountId?: string;
   rawTarget?: string | null;
   fallbackThreadId?: string | number | null;
 }) {
@@ -52,6 +55,7 @@ function resolveParsedRouteTarget(params: {
   const threadId = normalizeOptionalThreadValue(parsed?.threadId ?? params.fallbackThreadId);
   return {
     channel,
+    accountId: params.accountId,
     rawTo,
     to: parsed?.to ?? rawTo,
     ...(threadId != null ? { threadId } : {}),
@@ -87,6 +91,7 @@ export function resolveSessionDeliveryTarget(params: {
   const parsedSessionTarget = sessionLastChannel
     ? resolveParsedRouteTarget({
         channel: sessionLastChannel,
+        accountId: context?.accountId,
         rawTarget: context?.to,
         fallbackThreadId: context?.threadId,
       })
@@ -97,6 +102,7 @@ export function resolveSessionDeliveryTarget(params: {
     hasTurnSourceChannel && params.turnSourceChannel
       ? resolveParsedRouteTarget({
           channel: params.turnSourceChannel,
+          accountId: params.turnSourceAccountId,
           rawTarget: params.turnSourceTo,
           fallbackThreadId: params.turnSourceThreadId,
         })
@@ -115,8 +121,8 @@ export function resolveSessionDeliveryTarget(params: {
         left: parsedTurnSourceTarget,
         right: parsedSessionTarget,
       }));
-  // Shared sessions can receive cross-channel updates mid-turn; only inherit session threads
-  // when the turn source still identifies the same conversation.
+  // Shared sessions can receive cross-channel or cross-account updates mid-turn;
+  // only inherit session threads from the same account-scoped conversation.
   const lastThreadId = hasTurnSourceThreadId
     ? parsedTurnSourceTarget?.threadId
     : hasTurnSourceChannel &&

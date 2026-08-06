@@ -1,3 +1,4 @@
+// Qa Lab plugin module implements bus waiters behavior.
 import { resolveTimerTimeoutMs } from "openclaw/plugin-sdk/number-runtime";
 import type {
   QaBusEvent,
@@ -39,6 +40,7 @@ function createQaBusMatcher(
     return (
       snapshot.messages.find(
         (message) =>
+          !message.deleted &&
           (!input.direction || message.direction === input.direction) &&
           message.text.includes(input.textIncludes),
       ) ?? null

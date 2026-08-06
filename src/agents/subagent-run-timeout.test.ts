@@ -1,8 +1,11 @@
+// Subagent run timeout tests keep semantic deadlines separate from the maximum
+// delay that Node timers can safely schedule.
 import { describe, expect, it } from "vitest";
 import { MAX_TIMER_TIMEOUT_MS } from "../shared/number-coercion.js";
 import {
   resolveSubagentRunDeadlineMs,
   resolveSubagentRunDurationMs,
+  resolveSubagentRunEffectiveEndedAt,
   resolveSubagentRunTimerDelayMs,
 } from "./subagent-run-timeout.js";
 
@@ -15,15 +18,57 @@ describe("subagent run timeout helpers", () => {
       resolveSubagentRunDeadlineMs({
         createdAt: 1_000,
         runTimeoutSeconds: thirtyDaysSeconds,
+        execution: {},
       }),
     ).toBe(2_592_001_000);
   });
 
+  it("waits for the collector lifecycle start before setting its deadline", () => {
+    expect(
+      resolveSubagentRunDeadlineMs({
+        collect: true,
+        createdAt: 1_000,
+        runTimeoutSeconds: 60,
+        execution: {},
+      }),
+    ).toBeUndefined();
+    expect(
+      resolveSubagentRunDeadlineMs({
+        collect: true,
+        createdAt: 1_000,
+        runTimeoutSeconds: 60,
+        execution: {},
+      }),
+    ).toBeUndefined();
+    expect(
+      resolveSubagentRunDeadlineMs(
+        {
+          collect: true,
+          createdAt: 1_000,
+          runTimeoutSeconds: 60,
+          execution: {},
+        },
+        5_000,
+      ),
+    ).toBe(65_000);
+  });
+
   it("caps actual timer delays without shortening semantic durations", () => {
+    // Long-lived subagent runs retain their requested deadline even though the
+    // watchdog timer must be scheduled in bounded chunks.
     const thirtyDaysSeconds = 30 * 24 * 60 * 60;
 
     expect(resolveSubagentRunTimerDelayMs(thirtyDaysSeconds)).toBe(MAX_TIMER_TIMEOUT_MS);
     expect(resolveSubagentRunDurationMs(thirtyDaysSeconds)).toBeGreaterThan(MAX_TIMER_TIMEOUT_MS);
+  });
+
+  it("clamps delayed terminal observations to the explicit deadline", () => {
+    expect(
+      resolveSubagentRunEffectiveEndedAt(
+        { createdAt: 1_000, execution: { startedAt: 2_000 }, runTimeoutSeconds: 3 },
+        6_000,
+      ),
+    ).toBe(5_000);
   });
 
   it("ignores invalid timeout seconds and invalid start timestamps", () => {
@@ -33,6 +78,7 @@ describe("subagent run timeout helpers", () => {
       resolveSubagentRunDeadlineMs({
         createdAt: Number.POSITIVE_INFINITY,
         runTimeoutSeconds: 60,
+        execution: {},
       }),
     ).toBeUndefined();
   });

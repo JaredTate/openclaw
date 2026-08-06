@@ -1,13 +1,17 @@
+// Skills workshop CLI tests cover workshop skill commands and filesystem setup.
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { captureEnv } from "../test-utils/env.js";
+import {
+  createOpenClawTestState,
+  type OpenClawTestState,
+} from "../test-utils/openclaw-test-state.js";
 import { createTrackedTempDirs } from "../test-utils/tracked-temp-dirs.js";
 import { registerSkillsCli } from "./skills-cli.js";
 
 const tempDirs = createTrackedTempDirs();
-let envSnapshot: ReturnType<typeof captureEnv>;
+let testState: OpenClawTestState;
 let stateDir = "";
 
 const mocks = vi.hoisted(() => {
@@ -42,6 +46,20 @@ vi.mock("../runtime.js", () => ({
   defaultRuntime: mocks.defaultRuntime,
 }));
 
+vi.mock("../gateway/call.js", () => ({
+  callGateway: vi.fn(async () => {
+    throw Object.assign(new Error("gateway unavailable"), { kind: "closed", code: 1006 });
+  }),
+  isGatewayCredentialsRequiredError: () => false,
+  isGatewayTransportError: () => true,
+}));
+
+vi.mock("../infra/gateway-lock.js", () => ({
+  acquireGatewayLock: vi.fn(async () => ({
+    release: vi.fn(async () => undefined),
+  })),
+}));
+
 vi.mock("../terminal/links.js", () => ({
   formatDocsLink: () => "docs.openclaw.ai/cli/skills",
 }));
@@ -59,6 +77,7 @@ vi.mock("../terminal/theme.js", () => ({
 
 vi.mock("../config/config.js", () => ({
   getRuntimeConfig: () => ({}),
+  resetConfigRuntimeState: () => undefined,
 }));
 
 vi.mock("../agents/agent-scope.js", () => ({
@@ -87,10 +106,12 @@ describe("skills workshop cli", () => {
   };
 
   beforeEach(async () => {
-    envSnapshot = captureEnv(["OPENCLAW_STATE_DIR"]);
+    testState = await createOpenClawTestState({
+      layout: "state-only",
+      prefix: "openclaw-skills-cli-workshop-state-",
+    });
     mocks.workspaceDir = await tempDirs.make("openclaw-skills-cli-workshop-");
-    stateDir = await tempDirs.make("openclaw-skills-cli-workshop-state-");
-    process.env.OPENCLAW_STATE_DIR = stateDir;
+    stateDir = testState.stateDir;
     mocks.runtimeStdout.length = 0;
     mocks.runtimeErrors.length = 0;
     mocks.defaultRuntime.log.mockClear();
@@ -101,8 +122,34 @@ describe("skills workshop cli", () => {
   });
 
   afterEach(async () => {
-    envSnapshot.restore();
+    await testState.cleanup();
     await tempDirs.cleanup();
+  });
+
+  it("renders workshop parent help successfully without creating workshop state", async () => {
+    const helpOutput: string[] = [];
+    const program = new Command();
+    program.exitOverride();
+    program.configureOutput({
+      writeErr: (value) => helpOutput.push(value),
+      writeOut: (value) => helpOutput.push(value),
+    });
+    registerSkillsCli(program);
+
+    const originalExitCode = process.exitCode;
+    try {
+      process.exitCode = undefined;
+      await program.parseAsync(["skills", "workshop"], { from: "user" });
+
+      expect(process.exitCode).toBe(0);
+      expect(helpOutput.join("")).toContain("Manage pending skill proposals");
+      expect(helpOutput.join("")).toContain("propose-create");
+      expect(mocks.runtimeStdout).toEqual([]);
+      expect(mocks.runtimeErrors).toEqual([]);
+      await expect(fs.access(path.join(stateDir, "skill-workshop"))).rejects.toThrow();
+    } finally {
+      process.exitCode = originalExitCode;
+    }
   });
 
   it("creates, lists, inspects, and applies a skill proposal", async () => {
@@ -173,7 +220,7 @@ describe("skills workshop cli", () => {
     ).resolves.toContain("Use current conditions");
   });
 
-  it("scopes list and inspect to the selected workspace", async () => {
+  it("lists and inspects an agent proposal after its workspace changes", async () => {
     const firstWorkspaceDir = mocks.workspaceDir;
     const draftPath = path.join(firstWorkspaceDir, "proposal-draft.md");
     await fs.writeFile(draftPath, "# First CLI Skill\n", "utf8");
@@ -194,11 +241,10 @@ describe("skills workshop cli", () => {
 
     mocks.workspaceDir = await tempDirs.make("openclaw-skills-cli-workshop-second-");
     await runCommand(["skills", "workshop", "list"]);
-    expect(mocks.runtimeStdout.at(-1)).toBe("No skill proposals.");
-    await expect(runCommand(["skills", "workshop", "inspect", proposalId!])).rejects.toThrow(
-      "__exit__:1",
-    );
-    expect(mocks.runtimeErrors).toContain(`Skill proposal not found: ${proposalId}`);
+    expect(mocks.runtimeStdout.at(-1)).toContain(`${proposalId}  pending  create`);
+    expect(mocks.runtimeStdout.at(-1)).toContain("[previous workspace]");
+    await runCommand(["skills", "workshop", "inspect", proposalId!]);
+    expect(mocks.runtimeStdout.at(-1)).toContain("status: proposal");
 
     mocks.workspaceDir = firstWorkspaceDir;
     await runCommand(["skills", "workshop", "inspect", proposalId!]);

@@ -1,3 +1,4 @@
+// Provider family plugin tests cover grouped provider-family contract cases.
 import fs from "node:fs";
 import { basename, resolve } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -31,6 +32,7 @@ const SHARED_FAMILY_HOOK_PATTERNS: ReadonlyArray<{
 const PROVIDER_BOUNDARY_TEST_SIGNALS = [
   /\bregister(?:Single)?ProviderPlugin\s*\(/u,
   /\bcreateTestPluginApi\s*\(/u,
+  /\bcapturePluginRegistration\s*\(/u,
   /\bexpectPassthroughReplayPolicy\s*\(/u,
 ] as const;
 const EXPECTED_SENTINEL_SHARED_FAMILY_ASSIGNMENTS: Record<string, ExpectedSharedFamilyContract> = {
@@ -40,8 +42,10 @@ const EXPECTED_SENTINEL_SHARED_FAMILY_ASSIGNMENTS: Record<string, ExpectedShared
   },
   minimax: {
     replayFamilies: ["hybrid-anthropic-openai"],
+    streamFamilies: ["minimax-fast-mode"],
   },
   openai: {
+    streamFamilies: ["openai-responses-defaults"],
     toolCompatFamilies: ["openai"],
   },
 };

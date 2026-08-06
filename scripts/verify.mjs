@@ -1,4 +1,6 @@
+// Runs the broad verification graph used by Crabbox/Testbox: check then test.
 import { performance } from "node:perf_hooks";
+import { booleanFlag, parseFlagArgs } from "./lib/arg-utils.mjs";
 import { formatMs, printTimingSummary } from "./lib/check-timing-summary.mjs";
 import { runManagedCommand } from "./lib/managed-child-process.mjs";
 
@@ -7,7 +9,10 @@ const stages = [
   { name: "test", args: ["test"] },
 ];
 
-export function usage() {
+/**
+ * Renders CLI usage for the verification wrapper.
+ */
+function usage() {
   return [
     "Usage: node scripts/verify.mjs",
     "",
@@ -18,16 +23,24 @@ export function usage() {
   ].join("\n");
 }
 
-export function parseVerifyArgs(argv) {
-  const args = { help: false };
-  for (const arg of argv) {
-    if (arg === "--help" || arg === "-h") {
-      args.help = true;
-    } else {
-      throw new Error(`unknown argument: ${arg}\n\n${usage()}`);
-    }
-  }
-  return args;
+/**
+ * Parses verify wrapper CLI args.
+ */
+function parseVerifyArgs(argv) {
+  return parseFlagArgs(
+    argv,
+    { help: false },
+    [
+      booleanFlag("--help", "help", true, { repeatable: true }),
+      booleanFlag("-h", "help", true, { repeatable: true }),
+    ],
+    {
+      ignoreDoubleDash: false,
+      onUnhandledArg(arg) {
+        throw new Error(`unknown argument: ${arg}\n\n${usage()}`);
+      },
+    },
+  );
 }
 
 async function runStage(stage) {
@@ -45,7 +58,10 @@ async function runStage(stage) {
   };
 }
 
-export async function main(argv = process.argv.slice(2)) {
+/**
+ * Runs verification stages in order and stops at the first failure.
+ */
+async function main(argv = process.argv.slice(2)) {
   let args;
   try {
     args = parseVerifyArgs(argv);
