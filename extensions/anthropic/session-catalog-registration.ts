@@ -1,5 +1,4 @@
 import { statSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import {
@@ -14,6 +13,7 @@ import type {
 import type { SessionCatalogProvider } from "openclaw/plugin-sdk/session-catalog";
 import { CLAUDE_CLI_BACKEND_ID, CLAUDE_CLI_ROUTE_PROBE_MODEL_IDS } from "./cli-constants.js";
 import { resolveClaudeTerminalExecutable } from "./session-catalog-executable.js";
+import { resolveClaudeCatalogHomeDir } from "./session-catalog-home.js";
 import {
   CLAUDE_CLI_NODE_RUN_COMMAND,
   CLAUDE_SESSION_READ_COMMAND,
@@ -42,9 +42,12 @@ function isClaudeSessionCatalogEnabled(pluginConfig: unknown): boolean {
 // Node declarations expose catalog commands only when this machine owns a
 // Claude session store; otherwise the gateway must skip the node capability.
 function claudeProjectsAvailable(env: NodeJS.ProcessEnv): boolean {
-  const homeDir = env.HOME?.trim() || env.USERPROFILE?.trim() || os.homedir();
+  const homeDir = resolveClaudeCatalogHomeDir(env);
+  const configDir = env.CLAUDE_CONFIG_DIR?.trim();
   try {
-    return statSync(path.join(homeDir, ".claude", "projects")).isDirectory();
+    return statSync(
+      path.join(configDir ? path.resolve(configDir) : path.join(homeDir, ".claude"), "projects"),
+    ).isDirectory();
   } catch {
     return false;
   }
@@ -62,6 +65,7 @@ function registerClaudeSessionCatalog(api: OpenClawPluginApi): void {
   const provider: SessionCatalogProvider = {
     id: "claude",
     label: "Claude Code",
+    supportsProcessHomeIsolation: true,
     resolveCreateSession: ({ agentId }) =>
       api.runtime.agent.resolveSessionCatalogCreateTarget({
         config: currentConfig(api),
@@ -73,9 +77,11 @@ function registerClaudeSessionCatalog(api: OpenClawPluginApi): void {
     list: async (query) => await (await loadCatalogRuntime()).list(query),
     read: async (request) => await (await loadCatalogRuntime()).read(request),
     continueSession: async (request) => await (await loadCatalogRuntime()).continueSession(request),
+    startTerminalSession: async (request) =>
+      await (await loadCatalogRuntime()).startTerminalSession(request),
     openTerminal: async (request) => await (await loadCatalogRuntime()).openTerminal(request),
-    checkUpstreamActivity: async (probes) =>
-      await (await loadCatalogRuntime()).checkUpstreamActivity(probes),
+    checkUpstreamActivity: async (probes, policy) =>
+      await (await loadCatalogRuntime()).checkUpstreamActivity(probes, policy),
   };
   api.registerSessionCatalog(provider);
 }

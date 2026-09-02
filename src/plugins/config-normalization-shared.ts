@@ -237,7 +237,7 @@ function normalizePluginEntries(
 }
 
 /** Normalizes plugin config while allowing callers to resolve aliases first. */
-export function normalizePluginsConfigWithResolver(
+export function normalizePluginsConfigWithResolverCore(
   config?: OpenClawConfig["plugins"],
   normalizePluginId: NormalizePluginId = identityNormalizePluginId,
 ): NormalizedPluginsConfig {
@@ -255,46 +255,35 @@ export function normalizePluginsConfigWithResolver(
   };
 }
 
-export function hasExplicitPluginConfig(plugins?: OpenClawConfig["plugins"]): boolean {
-  if (!plugins) {
-    return false;
-  }
-  if (typeof plugins.enabled === "boolean") {
-    return true;
-  }
-  if (Array.isArray(plugins.allow) && plugins.allow.length > 0) {
-    return true;
-  }
-  if (Array.isArray(plugins.deny) && plugins.deny.length > 0) {
-    return true;
-  }
-  if (plugins.load?.paths && Array.isArray(plugins.load.paths) && plugins.load.paths.length > 0) {
-    return true;
-  }
-  if (plugins.slots && Object.keys(plugins.slots).length > 0) {
-    return true;
-  }
-  if (plugins.entries && Object.keys(plugins.entries).length > 0) {
-    return true;
-  }
-  return false;
-}
-
-export function isBundledChannelEnabledByChannelConfig(
+/**
+ * Reads the operator's `channels.<id>.enabled` decision for a channel plugin id.
+ * `true`/`false` are explicit channel-level decisions; `undefined` means no signal.
+ */
+export function resolveChannelConfigEnablement(
   cfg: OpenClawConfig | undefined,
   pluginId: string,
-): boolean {
-  if (!cfg) {
-    return false;
+  channelIds: readonly string[] = [],
+): boolean | undefined {
+  const channels = cfg?.channels as Record<string, unknown> | undefined;
+  if (!channels) {
+    return undefined;
   }
-  const channelId = normalizeChatChannelId(pluginId);
-  if (!channelId) {
-    return false;
+  // Manifest-owned channel ids come first: a plugin id can differ from its channel key
+  // (for example `openclaw-qqbot` owning `channels.qqbot`), and the built-in catalog only
+  // resolves ids that match.
+  const candidateIds = [
+    ...channelIds.map((channelId) => normalizeChatChannelId(channelId) ?? channelId),
+    normalizeChatChannelId(pluginId),
+  ];
+  for (const channelId of candidateIds) {
+    const entry = channelId ? channels[channelId] : undefined;
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      continue;
+    }
+    const enabled = (entry as Record<string, unknown>).enabled;
+    if (typeof enabled === "boolean") {
+      return enabled;
+    }
   }
-  const channels = cfg.channels as Record<string, unknown> | undefined;
-  const entry = channels?.[channelId];
-  if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-    return false;
-  }
-  return (entry as Record<string, unknown>).enabled === true;
+  return undefined;
 }
